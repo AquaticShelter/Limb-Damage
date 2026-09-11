@@ -1,0 +1,128 @@
+buildscript {
+    repositories {
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
+    }
+}
+
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'net.minecraftforge.gradle' version '[6.0.16,6.2)'
+    id 'org.parchmentmc.librarian.forgegradle' version '1.+'
+}
+
+apply plugin: 'org.spongepowered.mixin'
+
+group = mod_group_id
+version = mod_version
+
+base {
+    archivesName = "${mod_id}-${minecraft_version}"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+        client {}
+        server {}
+    }
+}
+
+mixin {
+    add sourceSets.main, "${mod_id}.refmap.json"
+    config "${mod_id}.mixins.json"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // TACZ: still deliberately ZERO compile-time dependency. The TACZ mixin targets
+    // com.tacz.guns.util.EntityUtil by STRING name and reads the returned EntityResult
+    // reflectively, so nothing from TACZ is needed on the compile classpath, and the mixin is
+    // skipped entirely at runtime when TACZ isn't installed (see LimbDamageMixinPlugin).
+    //
+    // Accurate Hitboxes: compileOnly from 1.1.0 on, for ObbBodyPartClassifier — classifying
+    // directly from AH's real per-bone OrientedBoundingBox data instead of reconstructing an
+    // approximation from a flat hit position (see that class's doc for why). This is compile-time
+    // only, never bundled, and every access is guarded behind LimbCompat.ACCURATE_HITBOXES_LOADED
+    // (checked via ModList, which touches no AH classes) — so the mod still builds and runs fine
+    // with AH absent; that code path just never gets exercised (and, since JVM classes load
+    // lazily on first use, ObbBodyPartClassifier itself never even gets loaded in that case).
+    //
+    // Resolved from a LOCAL jar in libs/ (already included in this project — it's the exact same
+    // jar you're running) rather than Curse Maven, so there's no file-id-matching step and no
+    // dependency on cursemaven.com being reachable at build time. Bumping your AH version later
+    // just means dropping the new jar into libs/ (any filename starting with "accuratehitboxes-"
+    // is picked up automatically — delete the old one first if you do this, or the build will
+    // fail with "multiple files found" rather than silently picking the wrong one).
+    def localAccurateHitboxes = fileTree(dir: "${projectDir}/libs", include: ["accuratehitboxes-*.jar"])
+    if (localAccurateHitboxes.isEmpty()) {
+        throw new GradleException(
+                "No Accurate Hitboxes jar found in libs/. Copy your accuratehitboxes-*.jar " +
+                "into ${projectDir}/libs/ and run this build again.")
+    }
+    compileOnly fg.deobf(localAccurateHitboxes.singleFile.path)
+
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    def props = [
+            minecraft_version_range: minecraft_version_range,
+            forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id,
+            mod_name: mod_name,
+            mod_license: mod_license,
+            mod_version: mod_version,
+            mod_authors: mod_authors,
+            mod_description: mod_description
+    ]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml']) {
+        expand props
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'MixinConfigs'            : "${mod_id}.mixins.json"
+        ])
+    }
+    finalizedBy 'reobfJar'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
