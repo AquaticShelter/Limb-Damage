@@ -1,0 +1,15 @@
+{
+  "required": false,
+  "package": "dev.szo9k4.limbdamage.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "minVersion": "0.8.5",
+  "priority": 2000,
+  "plugin": "dev.szo9k4.limbdamage.mixin.LimbDamageMixinPlugin",
+  "refmap": "limbdamage.refmap.json",
+  "mixins": [
+    "TaczHitResultMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
