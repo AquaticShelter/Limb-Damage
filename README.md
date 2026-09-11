@@ -189,43 +189,11 @@ vẫn sai lúc đứng yên, gửi log kèm `heightFraction`/`boxY` để chẩn
    bị hit tiếp ghi đè, và tự dọn sau 30s (`CombatLog.sweep`, chạy chung tick handler với
    `HitLocationTracker`) nếu không có hit nào khác — không tích luỹ vô hạn trên server chạy lâu.
 
-## Kiến trúc / phụ thuộc compile-time
-
-- **Không cần jar TACZ để build** (vẫn như cũ): mixin TACZ target class bằng CHUỖI TÊN
-  (`@Mixin(targets = "com.tacz.guns.util.EntityUtil")` + `@Pseudo`), đọc `EntityResult` bằng
-  reflection (cached MethodHandle, thử getter `getEntity`/`getHitVec` rồi fallback field
-  `entity`/`hitVec`). Để sửa cờ headshot, mod này còn dò thêm constructor 3 tham số
-  `(entity, hitVec, headshot)` — cùng constructor mà chính mixin của AH gọi — bằng cách so khớp
-  kiểu tham số runtime (`isInstance`) thay vì hardcode class, rồi gọi lại nó qua
-  `MethodHandle#invokeWithArguments` để tạo `EntityResult` mới với cờ đã sửa.
-- **Từ 1.1.1, CẦN jar Accurate Hitboxes lúc compile** (`compileOnly`, xem `build.gradle`) —
-  `ObbBodyPartClassifier` gọi thẳng type của AH (`OrientedBoundingBox`, `IAccurateEntity`...),
-  khác hẳn cách tiếp cận reflection-only ở trên. Đổi lại: mọi chỗ đụng tới type của AH đều nằm
-  sau `LimbCompat.ACCURATE_HITBOXES_LOADED` (check qua `ModList`, không đụng class nào của AH) —
-  nên vẫn chạy tốt khi AH KHÔNG cài lúc runtime (class Java load lười, `ObbBodyPartClassifier`
-  không bao giờ được load nếu check đó `false`, nên không có `NoClassDefFoundError`). Không cài
-  AH lúc build → lỗi compile ngay (khác với TACZ) — đây là đánh đổi có chủ đích để đổi lấy code
-  type-safe hơn hẳn reflection cho phần OBB, xem lý do trong doc của `ObbBodyPartClassifier`.
-- Mixin priority **2000** (AH mặc định 1000): AH inject HEAD + cancel vào đúng method này; lệnh
-  return do cancel sinh ra là opcode RETURN thật trong bytecode, mixin apply SAU sẽ wrap được cả
-  opcode đó — nên tầng capture này thấy đủ cả 2 đường: kết quả model-chính-xác của AH lẫn kết quả
-  gốc của TACZ khi không có AH.
-- Không có TACZ: mixin plugin (`LimbDamageMixinPlugin`) bỏ qua mixin hoàn toàn, mod vẫn chạy đủ
-  cho vanilla projectile + melee.
-- TACZ đổi cấu trúc EntityResult trong tương lai: resolve fail 1 lần, log 1 dòng warning, tự
-  xuống tầng 2 (clip quỹ đạo) — không bao giờ crash.
 
 ## Build
 
 ```bash
 ./gradlew build
 ```
-
-Không cần sửa gì trước — jar Accurate Hitboxes (`accuratehitboxes-neoforge-2_3_1-1_20_1.jar`, đúng
-bản bạn đang chạy) đã nằm sẵn trong `libs/`, `build.gradle` tự nhặt qua wildcard
-`accuratehitboxes-*.jar` (không dùng Curse Maven nữa — không phụ thuộc mạng lúc build, không phải
-đoán file id). Sau này lên đời AH: xoá jar cũ trong `libs/`, bỏ jar mới vào, build lại — không cần
-sửa `build.gradle`. Nếu quên bỏ jar vào (hoặc để lẫn 2 jar cùng lúc), Gradle báo lỗi rõ ràng ngay
-từ bước configure, không phải một đống lỗi "cannot find symbol" khó hiểu.
 
 Output: `build/libs/limbdamage-1.20.1-1.1.1.jar`
